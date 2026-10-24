@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adivinha o País</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --fg: #1d2433; --muted: #6a7488; --card: #ffffff; --line: #dde2ee;
+    --accent: #3b6cf6; --accent-fg: #ffffff; --good: #1f9d55; --shadow: 0 2px 8px rgba(20,30,60,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11151f; --fg: #e8ecf5; --muted: #98a2b8; --card: #1b2130; --line: #2b3347; --accent: #6b92ff; --accent-fg: #0b1020; --shadow: 0 2px 10px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 1.2rem; margin: 0 0 8px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .score { display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px 6px; }
+  .score b { min-width: 1.4em; text-align: center; font-size: 1.1rem; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 10px; padding: 8px 12px; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 16px; max-width: 1100px; margin: 0 auto; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; aspect-ratio: 3/2; position: relative; }
+  .tile.used { opacity: .4; }
+  .tile.used::after { content: "✓"; position: absolute; top: 4px; right: 8px; color: var(--good); font-weight: 700; }
+  .flag { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
+  .emoji { font-size: 4rem; line-height: 1; }
+
+  /* carta que vira */
+  #overlay { position: fixed; inset: 0; background: rgba(8,12,24,.7); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+  #overlay.open { display: flex; }
+  .scene { width: min(440px, 100%); height: min(640px, 88vh); perspective: 1400px; }
+  .card { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.3,.7,.2,1); transform: rotateY(0deg); }
+  .card.flipped { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: var(--card); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .front { align-items: center; justify-content: center; }
+  .front .flag { max-height: 70%; }
+  .front .emoji { font-size: 9rem; }
+  .back { transform: rotateY(180deg); }
+  .back h2 { margin: 0 0 10px; font-size: 1.1rem; }
+  ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; overflow: auto; }
+  li { display: flex; gap: 10px; align-items: flex-start; background: var(--bg); border-radius: 10px; padding: 10px; font-size: 1.02rem; line-height: 1.3; }
+  li span.n { flex: none; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
+  .answer { margin-top: auto; padding-top: 12px; }
+  .answer .reveal { display: none; text-align: center; }
+  .answer.shown .reveal { display: block; }
+  .answer.shown .hide { display: none; }
+  .answer .name { font-size: 1.6rem; font-weight: 800; margin: 4px 0 8px; }
+  .answer .flag { height: 56px; width: auto; }
+  .row { display: flex; gap: 8px; }
+  .row button { flex: 1; }
+  .close { align-self: flex-end; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌍 Adivinha o País</h1>
+  <div class="bar">
+    <div class="score">Eu <button id="m1">−</button><b id="s1">0</b><button id="p1">+</button></div>
+    <div class="score">Filho <button id="m2">−</button><b id="s2">0</b><button id="p2">+</button></div>
+    <button id="random" class="primary">🎲 Sortear</button>
+    <button id="reset">Limpar</button>
+  </div>
+</header>
+
+<main class="grid" id="grid"></main>
+
+<div id="overlay" role="dialog" aria-modal="true">
+  <div class="scene">
+    <div class="card" id="card">
+      <div class="face front" id="front"></div>
+      <div class="face back">
+        <h2>Pergunte uma por vez 👇</h2>
+        <ol id="clues"></ol>
+        <div class="answer" id="answer">
+          <button class="hide primary" id="showAns" style="width:100%">Mostrar resposta</button>
+          <div class="reveal"><div id="ansFlag"></div><div class="name" id="ansName"></div></div>
+        </div>
+        <button class="close" id="close">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="countries.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+let used = new Set(store.get("used", []));
+let scores = store.get("scores", [0, 0]);
+
+const emojiOf = code => [...code.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join("");
+function flagEl(code, name) {
+  const img = new Image();
+  img.className = "flag";
+  img.alt = "Bandeira";
+  img.src = `https://flagcdn.com/w320/${code}.png`;
+  img.onerror = () => { const s = document.createElement("span"); s.className = "emoji"; s.textContent = emojiOf(code); img.replaceWith(s); };
+  return img;
+}
+
+function renderGrid() {
+  const g = $("grid");
+  g.innerHTML = "";
+  COUNTRIES.forEach((c, i) => {
+    const t = document.createElement("div");
+    t.className = "tile" + (used.has(c[0]) ? " used" : "");
+    t.appendChild(flagEl(c[0]));
+    t.onclick = () => openCard(i);
+    g.appendChild(t);
+  });
+}
+
+let current = null;
+function openCard(i) {
+  current = i;
+  const [code, name, clues] = COUNTRIES[i];
+  $("front").replaceChildren(flagEl(code));
+  $("clues").innerHTML = clues.map((q, n) => `<li><span class="n">${n + 1}</span><span>${q}</span></li>`).join("");
+  $("answer").classList.remove("shown");
+  $("ansFlag").replaceChildren(flagEl(code));
+  $("ansName").textContent = name;
+  const card = $("card");
+  card.classList.remove("flipped");
+  $("overlay").classList.add("open");
+  // vira a carta logo após abrir
+  requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => card.classList.add("flipped"), 350)));
+}
+function closeCard() {
+  $("overlay").classList.remove("open");
+  if (current !== null) { used.add(COUNTRIES[current][0]); store.set("used", [...used]); renderGrid(); }
+  current = null;
+}
+$("showAns").onclick = () => $("answer").classList.add("shown");
+$("close").onclick = closeCard;
+$("overlay").onclick = e => { if (e.target === $("overlay") || e.target.classList.contains("scene")) closeCard(); };
+$("random").onclick = () => {
+  const free = COUNTRIES.map((c, i) => i).filter(i => !used.has(COUNTRIES[i][0]));
+  const pool = free.length ? free : COUNTRIES.map((c, i) => i);
+  openCard(pool[Math.floor(Math.random() * pool.length)]);
+};
+$("reset").onclick = () => { if (confirm("Limpar países usados e placar?")) { used.clear(); scores = [0, 0]; store.set("used", []); store.set("scores", scores); renderGrid(); renderScore(); } };
+
+function renderScore() { $("s1").textContent = scores[0]; $("s2").textContent = scores[1]; }
+[["p1", 0, 1], ["m1", 0, -1], ["p2", 1, 1], ["m2", 1, -1]].forEach(([id, p, d]) =>
+  $(id).onclick = () => { scores[p] = Math.max(0, scores[p] + d); store.set("scores", scores); renderScore(); });
+
+renderGrid();
+renderScore();
+</script>
+</body>
+</html>
